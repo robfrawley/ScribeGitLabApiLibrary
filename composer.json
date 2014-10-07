@@ -1,5 +1,5 @@
 {
-	"name": 	   "scribe/github-api-library",
+	"name": 	   "scribe/gitlab-api-library",
 	"type": 	   "library",
 	"description": "GitHub API client for PHP5",
 	"homepage":    "https://github.com/scribenet/ScribeGitLabApiLibrary",
