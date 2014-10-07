@@ -2,17 +2,45 @@
 
 namespace Gitlab;
 
-use Buzz\Client\Curl;
-use Buzz\Client\ClientInterface;
-
 use Gitlab\Api\ApiInterface;
 use Gitlab\Exception\InvalidArgumentException;
+use Gitlab\Exception\BadMethodCallException;
 use Gitlab\HttpClient\HttpClient;
 use Gitlab\HttpClient\HttpClientInterface;
-use Gitlab\HttpClient\Listener\AuthListener;
 
 /**
- * Simple API wrapper for Gitlab
+ * Simple yet very cool PHP GitLab client
+ *
+ * @method Api\CurrentUser currentUser()
+ * @method Api\CurrentUser me()
+ * @method Api\Enterprise ent()
+ * @method Api\Enterprise enterprise()
+ * @method Api\GitData git()
+ * @method Api\GitData gitData()
+ * @method Api\Gists gist()
+ * @method Api\Gists gists()
+ * @method Api\Issue issue()
+ * @method Api\Issue issues()
+ * @method Api\Markdown markdown()
+ * @method Api\Organization organization()
+ * @method Api\Organization organizations()
+ * @method Api\PullRequest pr()
+ * @method Api\PullRequest pullRequest()
+ * @method Api\PullRequest pullRequests()
+ * @method Api\Repo repo()
+ * @method Api\Repo repos()
+ * @method Api\Repo repository()
+ * @method Api\Repo repositories()
+ * @method Api\Organization team()
+ * @method Api\Organization teams()
+ * @method Api\User user()
+ * @method Api\User users()
+ * @method Api\Authorizations authorization()
+ * @method Api\Authorizations authorizations()
+ * @method Api\Meta meta()
+ *
+ * @author Joseph Bielawski <stloyd@gmail.com>
+ * @author Rob Frawley 2nd <rfrawley@scribenet.com>
  */
 class Client
 {
@@ -21,6 +49,18 @@ class Client
      * login with username and token in URL.
      */
     const AUTH_URL_TOKEN = 'url_token';
+
+    /**
+     * Constant for authentication method. Not indicates the new login, but allows
+     * usage of unauthenticated rate limited requests for given client_id + client_secret
+     */
+    const AUTH_URL_CLIENT_ID = 'url_client_id';
+
+    /**
+     * Constant for authentication method. Indicates the new favored login method
+     * with username and password via HTTP Authentication.
+     */
+    const AUTH_HTTP_PASSWORD = 'http_password';
 
     /**
      * Constant for authentication method. Indicates the new login method with
@@ -32,33 +72,32 @@ class Client
      * @var array
      */
     private $options = array(
-        'user_agent'  => 'php-gitlab-api (http://github.com/m4tthumphrey/php-gitlab-api)',
-        'timeout'     => 60
+        'base_url'    => 'https://api.github.com/',
+
+        'user_agent'  => 'scribe-gitlab-api-library ())',
+        'timeout'     => 10,
+
+        'api_limit'   => 5000,
+        'api_version' => 'beta',
+
+        'cache_dir'   => null
     );
 
-    private $base_url = null;
-
     /**
-     * The Buzz instance used to communicate with Gitlab
+     * The Buzz instance used to communicate with GitHub
      *
      * @var HttpClient
      */
     private $httpClient;
 
     /**
-     * Instantiate a new Gitlab client
+     * Instantiate a new GitHub client
      *
-     * @param string               $baseUrl
-     * @param null|ClientInterface $httpClient Buzz client
+     * @param null|HttpClientInterface $httpClient Gitlab http client
      */
-    public function __construct($baseUrl, ClientInterface $httpClient = null)
+    public function __construct(HttpClientInterface $httpClient = null)
     {
-        $httpClient = $httpClient ?: new Curl();
-        $httpClient->setTimeout($this->options['timeout']);
-        $httpClient->setVerifyPeer(false);
-
-        $this->base_url     = $baseUrl;
-        $this->httpClient   = new HttpClient($this->base_url, $this->options, $httpClient);
+        $this->httpClient = $httpClient;
     }
 
     /**
@@ -71,52 +110,78 @@ class Client
     public function api($name)
     {
         switch ($name) {
-            case 'users':
-                $api = new Api\Users($this);
+            case 'me':
+            case 'current_user':
+            case 'currentUser':
+                $api = new Api\CurrentUser($this);
                 break;
 
-            case 'projects':
-                $api = new Api\Projects($this);
+            case 'ent':
+            case 'enterprise':
+                $api = new Api\Enterprise($this);
                 break;
 
-            case 'namespaces':
-                $api = new Api\ProjectNamespaces($this);
+            case 'git':
+            case 'git_data':
+            case 'gitData':
+                $api = new Api\GitData($this);
+                break;
+
+            case 'gist':
+            case 'gists':
+                $api = new Api\Gists($this);
+                break;
+
+            case 'issue':
+            case 'issues':
+                $api = new Api\Issue($this);
+                break;
+
+            case 'markdown':
+                $api = new Api\Markdown($this);
+                break;
+
+            case 'organization':
+            case 'organizations':
+                $api = new Api\Organization($this);
+                break;
+
+            case 'pr':
+            case 'pullRequest':
+            case 'pull_request':
+            case 'pullRequests':
+            case 'pull_requests':
+                $api = new Api\PullRequest($this);
                 break;
 
             case 'repo':
+            case 'repos':
+            case 'repository':
             case 'repositories':
-                $api = new Api\Repositories($this);
+                $api = new Api\Repo($this);
                 break;
 
-            case 'mr':
-            case 'merge_requests':
-                $api = new Api\MergeRequests($this);
+            case 'team':
+            case 'teams':
+                $api = new Api\Organization\Teams($this);
                 break;
 
-            case 'issues':
-                $api = new Api\Issues($this);
+            case 'user':
+            case 'users':
+                $api = new Api\User($this);
                 break;
 
-            case 'milestones':
-            case 'ms':
-                $api = new Api\Milestones($this);
+            case 'authorization':
+            case 'authorizations':
+                $api = new Api\Authorizations($this);
                 break;
 
-            case 'groups':
-                $api = new Api\Groups($this);
-                break;
-
-            case 'hooks':
-            case 'system_hooks':
-                $api = new Api\SystemHooks($this);
-                break;
-
-            case 'snippets':
-                $api = new Api\Snippets($this);
+            case 'meta':
+                $api = new Api\Meta($this);
                 break;
 
             default:
-                throw new InvalidArgumentException();
+                throw new InvalidArgumentException(sprintf('Undefined api instance called: "%s"', $name));
         }
 
         return $api;
@@ -125,19 +190,39 @@ class Client
     /**
      * Authenticate a user for all next requests
      *
-     * @param string      $token      Gitlab private token
-     * @param null|string $authMethod One of the AUTH_* class constants
-     * @param null|string $sudo
+     * @param string      $tokenOrLogin GitHub private token/username/client ID
+     * @param null|string $password     GitHub password/secret (optionally can contain $authMethod)
+     * @param null|string $authMethod   One of the AUTH_* class constants
+     *
+     * @throws InvalidArgumentException If no authentication method was given
      */
-    public function authenticate($token, $authMethod = null, $sudo = null)
+    public function authenticate($tokenOrLogin, $password = null, $authMethod = null)
     {
-        $this->httpClient->addListener(
-            new AuthListener(
-                $authMethod,
-                $token,
-                $sudo
-            )
-        );
+        if (null === $password && null === $authMethod) {
+            throw new InvalidArgumentException('You need to specify authentication method!');
+        }
+
+        if (null === $authMethod && in_array($password, array(self::AUTH_URL_TOKEN, self::AUTH_URL_CLIENT_ID, self::AUTH_HTTP_PASSWORD, self::AUTH_HTTP_TOKEN))) {
+            $authMethod = $password;
+            $password   = null;
+        }
+
+        if (null === $authMethod) {
+            $authMethod = self::AUTH_HTTP_PASSWORD;
+        }
+
+        $this->getHttpClient()->authenticate($tokenOrLogin, $password, $authMethod);
+    }
+
+    /**
+     * Sets the URL of your GitHub Enterprise instance.
+     *
+     * @param string $enterpriseUrl URL of the API in the form of http(s)://hostname
+     */
+    public function setEnterpriseUrl($enterpriseUrl)
+    {
+        $baseUrl = (substr($enterpriseUrl, -1) == '/') ? substr($enterpriseUrl, 0, -1) : $enterpriseUrl;
+        $this->getHttpClient()->client->setBaseUrl($baseUrl . '/api/v3');
     }
 
     /**
@@ -145,6 +230,10 @@ class Client
      */
     public function getHttpClient()
     {
+        if (null === $this->httpClient) {
+            $this->httpClient = new HttpClient($this->options);
+        }
+
         return $this->httpClient;
     }
 
@@ -156,21 +245,12 @@ class Client
         $this->httpClient = $httpClient;
     }
 
-    public function setBaseUrl($url)
-    {
-        $this->base_url = $url;
-    }
-    public function getBaseUrl()
-    {
-        return $this->base_url;
-    }
-
     /**
      * Clears used headers
      */
     public function clearHeaders()
     {
-        $this->httpClient->clearHeaders();
+        $this->getHttpClient()->clearHeaders();
     }
 
     /**
@@ -178,7 +258,7 @@ class Client
      */
     public function setHeaders(array $headers)
     {
-        $this->httpClient->setHeaders($headers);
+        $this->getHttpClient()->setHeaders($headers);
     }
 
     /**
@@ -202,13 +282,43 @@ class Client
      * @param mixed  $value
      *
      * @throws InvalidArgumentException
+     * @throws InvalidArgumentException
      */
     public function setOption($name, $value)
     {
         if (!array_key_exists($name, $this->options)) {
             throw new InvalidArgumentException(sprintf('Undefined option called: "%s"', $name));
         }
+        $supportedApiVersions = $this->getSupportedApiVersions();
+        if ('api_version' == $name && !in_array($value, $supportedApiVersions)) {
+            throw new InvalidArgumentException(sprintf('Invalid API version ("%s"), valid are: %s', $name, implode(', ', $supportedApiVersions)));
+        }
 
         $this->options[$name] = $value;
+    }
+
+    /**
+     * Returns an array of valid API versions supported by this client.
+     *
+     * @return array
+     */
+    public function getSupportedApiVersions()
+    {
+        return array('v3', 'beta');
+    }
+
+    /**
+     * @param string $name
+     *
+     * @return ApiInterface
+     *
+     * @throws InvalidArgumentException
+     */
+    public function __call($name, $args) {
+        try {
+            return $this->api($name);
+        } catch (InvalidArgumentException $e) {
+            throw new BadMethodCallException(sprintf('Undefined method called: "%s"', $name));
+        }
     }
 }

@@ -2,39 +2,37 @@
 
 namespace Gitlab\HttpClient;
 
-use Buzz\Client\ClientInterface;
-use Buzz\Listener\ListenerInterface;
+use Gitlab\Exception\TwoFactorAuthenticationRequiredException;
+use Guzzle\Http\Client as GuzzleClient;
+use Guzzle\Http\ClientInterface;
+use Guzzle\Http\Message\Request;
+use Guzzle\Http\Message\Response;
 
 use Gitlab\Exception\ErrorException;
 use Gitlab\Exception\RuntimeException;
+use Gitlab\HttpClient\Listener\AuthListener;
 use Gitlab\HttpClient\Listener\ErrorListener;
-use Gitlab\HttpClient\Message\Request;
-use Gitlab\HttpClient\Message\Response;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
- * Performs requests on Gitlab API. API documentation should be self-explanatory.
+ * Performs requests on GitHub API. API documentation should be self-explanatory.
  *
  * @author Joseph Bielawski <stloyd@gmail.com>
  */
 class HttpClient implements HttpClientInterface
 {
-    /**
-     * @var array
-     */
     protected $options = array(
-        'user_agent'  => 'php-gitlab-api (http://github.com/m4tthumphrey/php-gitlab-api)',
+        'base_url'    => 'https://api.github.com/',
+
+        'user_agent'  => 'php-github-api (http://github.com/KnpLabs/php-github-api)',
         'timeout'     => 10,
+
+        'api_limit'   => 5000,
+        'api_version' => 'v3',
+
+        'cache_dir'   => null
     );
 
-    protected $base_url = null;
-
-    /**
-     * @var array
-     */
-    protected $listeners = array();
-    /**
-     * @var array
-     */
     protected $headers = array();
 
     private $lastResponse;
@@ -44,14 +42,13 @@ class HttpClient implements HttpClientInterface
      * @param array           $options
      * @param ClientInterface $client
      */
-    public function __construct($baseUrl, array $options, ClientInterface $client)
+    public function __construct(array $options = array(), ClientInterface $client = null)
     {
-        $this->base_url = $baseUrl;
-        $this->options  = array_merge($this->options, $options);
-        $this->client   = $client;
+        $this->options = array_merge($this->options, $options);
+        $client = $client ?: new GuzzleClient($this->options['base_url'], $this->options);
+        $this->client  = $client;
 
-        $this->addListener(new ErrorListener($this->options));
-
+        $this->addListener('request.error', array(new ErrorListener($this->options), 'onRequestError'));
         $this->clearHeaders();
     }
 
@@ -76,15 +73,20 @@ class HttpClient implements HttpClientInterface
      */
     public function clearHeaders()
     {
-        $this->headers = array();
+        $this->headers = array(
+            'Accept' => sprintf('application/vnd.github.%s+json', $this->options['api_version']),
+            'User-Agent' => sprintf('%s', $this->options['user_agent']),
+        );
     }
 
-    /**
-     * @param ListenerInterface $listener
-     */
-    public function addListener(ListenerInterface $listener)
+    public function addListener($eventName, $listener)
     {
-        $this->listeners[get_class($listener)] = $listener;
+        $this->client->getEventDispatcher()->addListener($eventName, $listener);
+    }
+
+    public function addSubscriber(EventSubscriberInterface $subscriber)
+    {
+        $this->client->addSubscriber($subscriber);
     }
 
     /**
@@ -92,83 +94,72 @@ class HttpClient implements HttpClientInterface
      */
     public function get($path, array $parameters = array(), array $headers = array())
     {
-        if (0 < count($parameters)) {
-            $path .= (false === strpos($path, '?') ? '?' : '&').http_build_query($parameters, '', '&');
-        }
-
-        return $this->request($path, array(), 'GET', $headers);
+        return $this->request($path, null, 'GET', $headers, array('query' => $parameters));
     }
 
     /**
      * {@inheritDoc}
      */
-    public function post($path, array $parameters = array(), array $headers = array())
+    public function post($path, $body = null, array $headers = array())
     {
-        return $this->request($path, $parameters, 'POST', $headers);
+        return $this->request($path, $body, 'POST', $headers);
     }
 
     /**
      * {@inheritDoc}
      */
-    public function patch($path, array $parameters = array(), array $headers = array())
+    public function patch($path, $body = null, array $headers = array())
     {
-        return $this->request($path, $parameters, 'PATCH', $headers);
+        return $this->request($path, $body, 'PATCH', $headers);
     }
 
     /**
      * {@inheritDoc}
      */
-    public function delete($path, array $parameters = array(), array $headers = array())
+    public function delete($path, $body = null, array $headers = array())
     {
-        return $this->request($path, $parameters, 'DELETE', $headers);
+        return $this->request($path, $body, 'DELETE', $headers);
     }
 
     /**
      * {@inheritDoc}
      */
-    public function put($path, array $parameters = array(), array $headers = array())
+    public function put($path, $body, array $headers = array())
     {
-        return $this->request($path, $parameters, 'PUT', $headers);
+        return $this->request($path, $body, 'PUT', $headers);
     }
 
     /**
      * {@inheritDoc}
      */
-    public function request($path, array $parameters = array(), $httpMethod = 'GET', array $headers = array())
+    public function request($path, $body = null, $httpMethod = 'GET', array $headers = array(), array $options = array())
     {
-        $path = trim($this->base_url.$path, '/');
-
-        $request = $this->createRequest($httpMethod, $path);
-        $request->addHeaders($headers);
-        $request->setContent(http_build_query($parameters));
-
-        $hasListeners = 0 < count($this->listeners);
-        if ($hasListeners) {
-            foreach ($this->listeners as $listener) {
-                $listener->preSend($request);
-            }
-        }
-
-        $response = new Response();
+        $request = $this->createRequest($httpMethod, $path, $body, $headers, $options);
 
         try {
-            $this->client->send($request, $response);
+            $response = $this->client->send($request);
         } catch (\LogicException $e) {
-            throw new ErrorException($e->getMessage());
+            throw new ErrorException($e->getMessage(), $e->getCode(), $e);
+        } catch (TwoFactorAuthenticationRequiredException $e) {
+            throw $e;
         } catch (\RuntimeException $e) {
-            throw new RuntimeException($e->getMessage());
+            throw new RuntimeException($e->getMessage(), $e->getCode(), $e);
         }
 
         $this->lastRequest  = $request;
         $this->lastResponse = $response;
 
-        if ($hasListeners) {
-            foreach ($this->listeners as $listener) {
-                $listener->postSend($request, $response);
-            }
-        }
-
         return $response;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function authenticate($tokenOrLogin, $password = null, $method)
+    {
+        $this->addListener('request.before_send', array(
+            new AuthListener($tokenOrLogin, $password, $method), 'onRequestBeforeSend'
+        ));
     }
 
     /**
@@ -187,18 +178,14 @@ class HttpClient implements HttpClientInterface
         return $this->lastResponse;
     }
 
-    /**
-     * @param string $httpMethod
-     * @param string $url
-     *
-     * @return Request
-     */
-    private function createRequest($httpMethod, $url)
+    protected function createRequest($httpMethod, $path, $body = null, array $headers = array(), array $options = array())
     {
-        $request = new Request($httpMethod);
-        $request->setHeaders($this->headers);
-        $request->fromUrl($url);
-
-        return $request;
+        return $this->client->createRequest(
+            $httpMethod,
+            $path,
+            array_merge($this->headers, $headers),
+            $body,
+            $options
+        );
     }
 }

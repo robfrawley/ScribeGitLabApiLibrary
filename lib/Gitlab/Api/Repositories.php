@@ -39,7 +39,7 @@ class Repositories extends AbstractApi
         return $this->get('projects/'.urlencode($project_id).'/repository/compare?from='.
             urlencode($fromShaOrMaster).'&to='.urlencode($toShaOrMaster));
     }
-	
+
     public function diff($project_id, $sha)
     {
         return $this->get('projects/'.urlencode($project_id).'/repository/commits/'.urlencode($sha).'/diff');

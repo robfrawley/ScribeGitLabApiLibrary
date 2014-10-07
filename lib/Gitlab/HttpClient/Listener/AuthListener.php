@@ -2,52 +2,24 @@
 
 namespace Gitlab\HttpClient\Listener;
 
+use Guzzle\Common\Event;
 use Gitlab\Client;
-use Gitlab\Exception\InvalidArgumentException;
+use Gitlab\Exception\RuntimeException;
 
-use Buzz\Listener\ListenerInterface;
-use Buzz\Message\MessageInterface;
-use Buzz\Message\RequestInterface;
-use Buzz\Util\Url;
-
-/**
- * @author Joseph Bielawski <stloyd@gmail.com>
- */
-class AuthListener implements ListenerInterface
+class AuthListener
 {
-    /**
-     * @var string
-     */
+    private $tokenOrLogin;
+    private $password;
     private $method;
 
-    /**
-     * @var string
-     */
-    private $token;
-
-    /**
-     * @var string|null
-     */
-    private $sudo;
-
-    /**
-     * @param string      $method
-     * @param string      $token
-     * @param string|null $sudo
-     */
-    public function __construct($method, $token, $sudo = null)
+    public function __construct($tokenOrLogin, $password = null, $method)
     {
-        $this->method  = $method;
-        $this->token = $token;
-        $this->sudo = $sudo;
+        $this->tokenOrLogin = $tokenOrLogin;
+        $this->password = $password;
+        $this->method = $method;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * @throws InvalidArgumentException
-     */
-    public function preSend(RequestInterface $request)
+    public function onRequestBeforeSend(Event $event)
     {
         // Skip by default
         if (null === $this->method) {
@@ -55,30 +27,42 @@ class AuthListener implements ListenerInterface
         }
 
         switch ($this->method) {
+            case Client::AUTH_HTTP_PASSWORD:
+                $event['request']->setHeader(
+                    'Authorization',
+                    sprintf('Basic %s', base64_encode($this->tokenOrLogin . ':' . $this->password))
+                );
+                break;
+
             case Client::AUTH_HTTP_TOKEN:
-                $request->addHeader('PRIVATE-TOKEN: '.$this->token);
-                if (!is_null($this->sudo)) {
-                    $request->addHeader('SUDO: '.$this->sudo);
-                }
+                $event['request']->setHeader('Authorization', sprintf('token %s', $this->tokenOrLogin));
+                break;
+
+            case Client::AUTH_URL_CLIENT_ID:
+                $url = $event['request']->getUrl();
+
+                $parameters = array(
+                    'client_id'     => $this->tokenOrLogin,
+                    'client_secret' => $this->password,
+                );
+
+                $url .= (false === strpos($url, '?') ? '?' : '&');
+                $url .= utf8_encode(http_build_query($parameters, '', '&'));
+
+                $event['request']->setUrl($url);
                 break;
 
             case Client::AUTH_URL_TOKEN:
-                $url  = $request->getUrl();
-                $query=array('private_token' => $this->token);
-                if (!is_null($this->sudo)) {
-                    $query['sudo'] = $this->sudo;
-                }
-                $url .= (false === strpos($url, '?') ? '?' : '&').utf8_encode(http_build_query($query, '', '&'));
+                $url = $event['request']->getUrl();
+                $url .= (false === strpos($url, '?') ? '?' : '&');
+                $url .= utf8_encode(http_build_query(array('access_token' => $this->tokenOrLogin), '', '&'));
 
-                $request->fromUrl(new Url($url));
+                $event['request']->setUrl($url);
+                break;
+
+            default:
+                throw new RuntimeException(sprintf('%s not yet implemented', $this->method));
                 break;
         }
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function postSend(RequestInterface $request, MessageInterface $response)
-    {
     }
 }
