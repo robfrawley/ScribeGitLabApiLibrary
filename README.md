@@ -1,7 +1,7 @@
 # GitLab API Bundle
 
 [![Build Status](https://img.shields.io/travis/scribenet/ScribeGitLabApiLibrary/master.svg?style=flat-square)](https://travis-ci.org/scribenet/ScribeGitLabApiLibrary)
-[![Quality Score](http://img.shields.io/codeclimate/coverage/github/scribenet/ScribeGitLabApiLibrary.svg?style=flat-square)](https://codeclimate.com/github/scribenet/ScribeGitLabApiLibrary)
+[![Quality Score](http://img.shields.io/codeclimate/github/scribenet/ScribeGitLabApiLibrary.svg?style=flat-square)](https://codeclimate.com/github/scribenet/ScribeGitLabApiLibrary)
 [![Coverage Status](http://img.shields.io/coveralls/scribenet/ScribeGitLabApiLibrary.svg?style=flat-square)](https://codeclimate.com/github/scribenet/ScribeGitLabApiLibrary)
 [![Dependency Status](http://img.shields.io/gemnasium/scribenet/ScribeGitLabApiLibrary.svg?style=flat-square)](https://gemnasium.com/scribenet/ScribeGitLabApiLibrary)
 [![Latest Version](http://img.shields.io/packagist/v/scribe/gitlab-api-library.svg?style=flat-square)](https://packagist.org/packages/scribe/gitlab-api-library)
