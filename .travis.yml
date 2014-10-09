@@ -1,21 +1,18 @@
 language: php
-
+notifications:
+  slack:
+    secure: IEdJ4qUxZj6wneRwdbw8gQQC48Qs79TqocRJNSJdduhpbTxDsvf2m7yPq8/ytTZeINw4UHsWMtnDaRTcLmwBRKrbrgyXH+qXrvyufnwuD4iVlh62bJKQkc4WqMQhgMAyHpgJ4EZQ89kBLqGqFVGY5JajV2sVKDCXeuGOAbPFsTs=
 branches:
   except:
-    - gh-pages
-
+  - gh-pages
 php:
-  - 5.5
-  - 5.6
-  - hhvm
-
+- 5.5
+- 5.6
+- hhvm
 before_script:
-  - travis_retry composer self-update
-  - travis_retry composer install --no-interaction --prefer-source --dev
-
+- travis_retry composer self-update
+- travis_retry composer install --no-interaction --prefer-source --dev
 script:
-  - vendor/bin/phpunit --verbose
-
+- vendor/bin/phpunit --verbose
 after_script:
- - php vendor/bin/coveralls -v
- - php vendor/bin/test-reporter
+- sh code-climate-coverage.sh
